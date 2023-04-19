@@ -1,0 +1,29 @@
+<h1>{{ .Site.Params.author }}</h1>
+{{ if reflect.IsSlice .Site.Params.info }}
+<h2>{{ range .Site.Params.info }}{{ . | markdownify }}<br>{{ end}}</h2>
+{{ else }}
+<h2>{{ .Site.Params.info | markdownify }} </h2>
+{{ end }}
+<!-- <h2>@<a href="https://limbik.com/" target="_blank" style="color:#000;">Limbik</a></h2> -->
+<style>
+    .download-button {
+        display: inline-block;
+        background-color: #000;
+        color: white;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        font-size: 14px;
+        border: 1px solid #444;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 10px;
+    }
+    .download-button:hover{
+        background-color: #444;
+        color: #ddd;
+    }
+</style>
+<button class="download-button" onclick="window.open('https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/resume+cong+liu+2023.pdf', '_blank')">{{- i18n "resume_download" -}}
+</button>
+  
