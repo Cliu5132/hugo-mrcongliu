@@ -13,7 +13,7 @@ I was easily affected by other drivers, experiencing road rage, which once terri
 
 This leads me to thinking about how lucky I've been to work remotely for the past two years. Even if there's a chance for a new job, I would first consider how many days I need to commute, as it's a significant factor in whether I'd accept that offer. Some companies in Waterloo, ON are offering three days a week. Is that a good arrangement? Why three days and not two or one? Who made this decision, and what's the reasoning behind this number? Is there scientific backing for it?
 
-After spending two days in the office this week, I've realized and concluded that the maximum number of days I can comfortably work in the office per week is just one. Anything more than that takes a toll on me – I experience back pain, exhaustion, poor sleep, a bad temper, irregular body timing, and eating schedule.
+After spending two days in the office this week, I've realized and concluded that the maximum number of days I can comfortably work in the office per week is just one. Anything more than that takes a toll on me – I experience back pain, exhaustion, poor sleep, a bad temper, routine interruptions, and eating schedule.
 
 To be more specific, if I were the Tech Lead, I would recommend that everyone on my team comes to the office either every Monday or Tuesday. Then, they can work remotely for the remaining four days. This is because we typically don't need more than one day to get aligned and start with full momentum. Moreover, even this one day in the office would be entirely optional, with no questions asked.
 
