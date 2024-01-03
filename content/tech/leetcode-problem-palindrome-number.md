@@ -5,7 +5,7 @@ date: 2024-01-02
 
 This problem is from Leetcode with a description as follows:
 
->> Given an integer x, return true if x is a palindrome, and false otherwise.
+> Given an integer x, return true if x is a palindrome, and false otherwise.
 
 My initial solution using recursion exceeded the time limit of Leetcode.
 
