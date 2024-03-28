@@ -33,7 +33,7 @@ class Solution:
         return answer
 ```
 
-Though it worked, its runtime only beat 23% of users with Python3. That's embracing!
+Though it worked, its runtime only beat 23% of users with Python3. That's ~~embracing~~ embarrassing!
 
 ![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/c410618a-7271-0247-22a8-30ce11df3299.png)
 
