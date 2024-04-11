@@ -3,6 +3,23 @@ title: "Certified Kubernetes Administrator (CKA) Notebook"
 date: 2024-04-10
 ---
 
+# Core Concepts
+
+## Core Concepts - Kubernetes Concepts
+
+- Pod
+
+  - Pods are the smallest deployable units of computing that you can create and manage in Kubernetes.
+
+  - A Pod is a group of one or more containers, with shared storage and network resources, and a specification for how to run the containers.
+
+- ReplicaSet
+  - A ReplicaSet's purpose is to maintain a stable set of replica Pods running at any given time. As such, it is often used to guarantee the availability of a specified number of identical Pods.
+
+---
+
+## Core Concepts - Practice Test - Pods
+
 ### how to calculate how many lines are returned in linux?
 
 ```bash
@@ -89,3 +106,231 @@ Alternatively, use `vi` or `nano` to update the yaml file, then run `kubectl app
 ```bash
 kubectl apply -f redis-definition.yaml
 ```
+
+---
+
+## Core Concepts - Practice Test - ReplicaSets
+
+### how to return all the ReplicaSets?
+
+```bash
+kubectl get replicaset
+# or
+kubectl get rs
+```
+
+### how to get the details of a ReplicaSet?
+
+```bash
+# kubectl describe replicaset <ReplicaSetName>
+kubectl describe replicaset new-replica-set
+```
+
+### common error in a ReplicaSet
+
+- the `apiVersion` must include `apps/v1`
+- the `tier` of `matchLabels` under `selector` must match exactly as the one under `labels`
+- pods won't update even the replicaset has been udpated, you have to either re-create the rs or delete all the pods so they will be created
+- scale down rs to 0 and then scale up to the number of replicaset you want will also update all the pods
+
+```yaml
+apiVersion: apps/v1 # fixed
+kind: ReplicaSet
+metadata:
+  name: replicaset-2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      tier: nginx # match
+  template:
+    metadata:
+      labels:
+        tier: nginx # match
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+```
+
+### how to scale a ReplicaSet?
+
+```bash
+kubectl scale rs new-replica-set --replicas 5
+```
+
+### how to delete a ReplicaSet?
+
+```bash
+# kubectl delete rs <ReplicaSetName>
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/0d13f097-c72e-5838-d6cc-b385731d82f9.png)
+
+---
+
+## Core Concepts - Practice Test - Deployment
+
+### how to create a Deployment with 4 ReplicaSets?
+
+```bash
+kubectl create deployment deploymentName --image=nginx --replicas=4 --dry-run=client -o yaml > randomFileName.yaml
+```
+
+---
+
+## Core Concepts - Practice Test - Namespaces
+
+### how to get the exact number of namespaces?
+
+```bash
+kubectl get ns --no-headers | wc -l
+```
+
+### how to create a pod in a specific namespace?
+
+> for example: `finance` namespace
+
+```bash
+kubectl run redis --image=redis -n finance
+```
+
+### Which namespace has the blue pod in it?
+
+```bash
+kubectl get pods --all-namespaces | grep blue
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/8ca89d16-b7ff-ce28-7639-65b2eb324a73.png)
+
+### how to access pod on another namespace?
+
+```bash
+# <service-name>.<namespace-name>.svc.cluster.local
+```
+
+---
+
+## Core Concepts - Practice Test - Services
+
+### how to get all the service?
+
+```bash
+kubectl get service
+```
+
+### how to see the details of a service?
+
+```bash
+kubectl describe service
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/61fd8945-7f8f-47b4-d4e8-deb7948681b5.png)
+
+### how to create a service using a template file?
+
+```yaml
+# service-definition-1.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+  namespace: default
+spec:
+  ports:
+    - nodePort: 30080
+      port: 8080
+      targetPort: 8080
+  selector:
+    name: simple-webapp
+  type: NodePort
+```
+
+```bash
+kubectl apply -f /root/service-definition-1.yaml
+```
+
+---
+
+## Core Concepts - Practice Test - Imperative Commands
+
+### Deploy a pod named `nginx-pod` using the `nginx:alpine` image.
+
+```bash
+kubectl run nginx-pod --image=nginx:alpine
+```
+
+### Deploy a redis pod using the `redis:alpine` image with the labels set to `tier=db`.
+
+- Use the imperative command:
+
+```bash
+kubectl run redis -l tier=db --image=redis:alpine
+```
+
+- Or, run the command to generate the definition file:
+
+```bash
+kubectl run redis --image=redis:alpine --dry-run=client -oyaml > redis-pod.yaml
+```
+
+Add given labels `tier=db` under the `metadata` section.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    tier: db
+  name: redis
+spec:
+  containers:
+    - image: redis:alpine
+      name: redis
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+```
+
+Then run the command: `kubectl create -f redis-pod.yaml` to create the pod from the definition file.
+
+### expose a pod through a service
+
+```bash
+kubectl expose pod redis --port=6379 --name redis-service
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/ce7a3e7c-5c4f-4b8a-e959-621a168c0480.png)
+
+### create a deployment named `webapp` using the image `kodekloud/webapp-color` with `3` replicas.
+
+```bash
+kubectl create deployment  webapp --image=kodekloud/webapp-color --replicas=3
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/ad29c750-dadb-64e3-80ae-e143f943cc09.png)
+
+### Create a new pod called `custom-nginx` using the `nginx` image and expose it on container port `8080`.
+
+```bash
+kubectl run custom-nginx --image=nginx --port=8080
+```
+
+Note, this is not the same as creating the pod and expose it in two seperate steps. (which only expose on the service level, not on the container level.)
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/84e19ee8-d2a8-f15f-0faf-fa1ab0883b36.png)
+
+### Create a new deployment called `redis-deploy` in the `dev-ns` namespace with the `redis` image. It should have `2` replicas.
+
+```bash
+kubectl create deployment redis-deploy --image=redis --replicas=2 -n dev-ns
+```
+
+### Create a pod called `httpd` using the image `httpd:alpine` in the default namespace. Next, create a service of type `ClusterIP` by the same name `httpd`. The target port for the service should be `80`.
+
+```bash
+kubectl run httpd --image=httpd:alpine --port=80 --expose
+```
+
+This equals the following two steps:
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/f5ad0328-30c4-a2b5-8079-1034ba563a50.png)
