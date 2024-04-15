@@ -79,6 +79,11 @@ We use `kubectl run` command with `--dry-run=client -o yaml` option to create a 
 kubectl run redis --image=redis123 --dry-run=client -o yaml > redis-definition.yaml
 ```
 
+`--dry-run`: By default as soon as the command is run, the resource will be created. If you simply want to test your command , use the `--dry-run=client` option. This will not create the resource, instead, tell you whether the resource can be created and if your command is right.
+`-o yaml`: This will output the resource definition in YAML format on screen.
+
+Use the above two in combination to generate a resource definition file quickly, that you can then modify and create resources as required, instead of creating the files from scratch.
+
 After that, using `kubectl create -f` command to create a resource from the manifest file:
 
 ```bash
@@ -364,7 +369,7 @@ kubectl create -f nginx.yaml
 Delete the existing pod first. Run the below command:
 
 ```bash
-kubectl delete po nginx
+kubectl delete pod nginx
 ```
 
 To list and know the names of available nodes on the cluster:
@@ -396,3 +401,67 @@ kubectl get pods -o wide
 ```
 
 ![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/799ceb89-a782-b601-eb0a-17f39eb3ebd5.png)
+
+---
+
+## Scheduling - Practice Test - Labels and Selectors
+
+### How to get all the pods with label `env=dev`?
+
+```bash
+kubectl get pods --selector env=dev
+```
+
+### How many pods have label `env=dev`?
+
+```bash
+kubectl get pods --selector env=dev --no-headers | wc -l
+```
+
+### How to get the that belongs to the prod environment, the finance BU, and frontend tier? (multi-selector)
+
+```bash
+kubectl get all --selector env=prod,bu=finance,tier=frontend
+```
+
+---
+
+## Scheduling - Practice Test - Taints and Tolerations
+
+### Check taints on a node `node01`.
+
+```bash
+kubectl describe node node01 | grep -i taints
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/258b2541-e916-2347-0699-4b6203cfe050.png)
+
+### Create a taint on `node01` with key of `spray`, value of `mortein` and effect of `NoSchedule`
+
+```bash
+kubectl taint nodes node01 spray=mortein:NoSchedule
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/530f4c4a-680a-0df0-9608-7f6aa5b21dcf.png)
+
+### Create a pod named `bee` with the `nginx` image, which has a toleration set to the taint `mortein`.
+
+Solution manifest file to create a pod called bee as follows:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bee
+spec:
+  containers:
+    - image: nginx
+      name: bee
+  tolerations:
+    - key: spray
+      value: mortein
+      effect: NoSchedule
+      operator: Equal
+```
+
+then run the kubectl create -f <FILE-NAME>.yaml to create a pod.
