@@ -334,3 +334,65 @@ kubectl run httpd --image=httpd:alpine --port=80 --expose
 This equals the following two steps:
 
 ![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/f5ad0328-30c4-a2b5-8079-1034ba563a50.png)
+
+---
+
+# Scheduling
+
+## Scheduling - Practice Test - Manual Scheduling
+
+### Create a pod using a given file `nginx.yaml`.
+
+```yaml
+# nginx.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+    - image: nginx
+      name: nginx
+```
+
+```bash
+kubectl create -f nginx.yaml
+```
+
+### Manually schedule the pod on `node01`.
+
+Delete the existing pod first. Run the below command:
+
+```bash
+kubectl delete po nginx
+```
+
+To list and know the names of available nodes on the cluster:
+
+```bash
+kubectl get nodes
+```
+
+Add the nodeName field under the spec section in the nginx.yaml file with node01 as the value:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  nodeName: node01
+  containers:
+    - image: nginx
+      name: nginx
+```
+
+Then run the command `kubectl create -f nginx.yaml` to create a pod from the definition file.
+
+To check the status of a `nginx` pod and to know the node name:
+
+```bash
+kubectl get pods -o wide
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/799ceb89-a782-b601-eb0a-17f39eb3ebd5.png)
