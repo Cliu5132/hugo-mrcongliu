@@ -428,6 +428,16 @@ kubectl get all --selector env=prod,bu=finance,tier=frontend
 
 ## Scheduling - Practice Test - Taints and Tolerations
 
+### How to taint a node and remove that taint
+
+```bash
+ubectl taint nodes node1 key1=value1:NoSchedule
+```
+
+```bash
+kubectl taint nodes node1 key1=value1:NoSchedule-
+```
+
 ### Check taints on a node `node01`.
 
 ```bash
@@ -464,4 +474,213 @@ spec:
       operator: Equal
 ```
 
-then run the kubectl create -f <FILE-NAME>.yaml to create a pod.
+then run the `kubectl create -f <FILE-NAME>.yaml` to create a pod.
+
+### Remove the taint on `controlplane`, which currently has the taint effect of `NoSchedule`.
+
+```bash
+kubectl taint nodes controlplane node-role.kubernetes.io/control-plane:NoSchedule-
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/c3f94d39-9fba-6245-c750-893ae3b46c8e.png)
+
+---
+
+## Scheduling - Practice Test - Node Affinity
+
+### Apply a label `color=blue` to node `node01`
+
+```bash
+kubectl label node node01 color=blue
+```
+
+### Check if `controlplane` and `node01` have any taints on them that will prevent the pods to be scheduled on them.
+
+```bash
+kubectl describe node controlplane | grep -i taints
+
+kubectl describe node node01 | grep -i taints
+```
+
+### Show taints on all nodes (alternative to the previous)
+
+```bash
+kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints --no-headers
+```
+
+### Set Node Affinity to the deployment to place the pods on `node01` only.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      run: nginx
+  template:
+    metadata:
+      labels:
+        run: nginx
+    spec:
+      containers:
+        - image: nginx
+          imagePullPolicy: Always
+          name: nginx
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: color
+                    operator: In
+                    values:
+                      - blue
+```
+
+### Create a new deployment named `red` with the `nginx` image and `2` replicas, and ensure it gets placed on the `controlplane` node only.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: red
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: nginx
+  template:
+    metadata:
+      labels:
+        run: nginx
+    spec:
+      containers:
+        - image: nginx
+          imagePullPolicy: Always
+          name: nginx
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+```
+
+---
+
+## Scheduling - Practice Test - Resource Limits
+
+### Inspect `elephant` pod and identify the Reason why it is not running.
+
+The reason for the pod not running is OOMKilled. This means that the pod ran out of memory.
+
+```bash
+root@controlplane:~# kubectl describe pod elephant  | grep -A5 State:
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+    Last State:     Terminated
+      Reason:       OOMKilled
+      Exit Code:    1
+      Started:      Sun, 25 Apr 2021 15:13:07 +0000
+      Finished:     Sun, 25 Apr 2021 15:13:07 +0000
+    Ready:          False
+root@controlplane:~#
+```
+
+The `grep -A5 State`: command is used to filter the output to show only the lines containing "State:", as well as the 5 lines that come after it. So, `A5` here means "after 5 lines." It's a command-line argument for the `grep` command to display additional context around the matching lines.
+
+It's changing the status frequently so make use of the watch command to get the output every two seconds:
+
+```bash
+root@controlplane ~ ➜  watch kubectl get pods
+```
+
+The status `OOMKilled` indicates that it is failing because the pod ran out of memory. Identify the memory limit set on the POD.
+
+```bash
+controlplane ~ ✖ kubectl describe pod elephant  | grep -A5 Limits:
+    Limits:
+      memory:  10Mi
+    Requests:
+      memory:     5Mi
+    Environment:  <none>
+    Mounts:
+```
+
+### The `elephant` pod runs a process that consumes 15Mi of memory. Increase the limit of the `elephant` pod to 20Mi.
+
+Create the file `elephant.yaml` by running command `kubectl get po elephant -o yaml > elephant.yaml` and edit the file such as memory limit is set to `20Mi` as follows:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: elephant
+  namespace: default
+spec:
+  containers:
+    - args:
+        - --vm
+        - "1"
+        - --vm-bytes
+        - 15M
+        - --vm-hang
+        - "1"
+      command:
+        - stress
+      image: polinux/stress
+      name: mem-stress
+      resources:
+        limits:
+          memory: 20Mi
+        requests:
+          memory: 5Mi
+```
+
+then run `kubectl replace -f elephant.yaml --force`. This command will delete the existing one first and recreate a new one from the YAML file.
+
+---
+
+## Scheduling - Practice Test - DaemonSets
+
+### How many `DaemonSets` are created in the cluster in all namespaces?
+
+```bash
+controlplane ~ ➜  kubectl get daemonsets --all-namespaces
+NAMESPACE      NAME              DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+kube-flannel   kube-flannel-ds   1         1         1       1            1           <none>                   104s
+kube-system    kube-proxy        1         1         1       1            1           kubernetes.io/os=linux   105s
+```
+
+### Identify all resources and their types
+
+```bash
+controlplane ~ ➜  kubectl get all --all-namespaces
+NAMESPACE      NAME                                       READY   STATUS    RESTARTS   AGE
+kube-flannel   pod/kube-flannel-ds-kqcw7                  1/1     Running   0          4m40s
+kube-system    pod/coredns-69f9c977-cwbq2                 1/1     Running   0          4m39s
+kube-system    pod/coredns-69f9c977-hv69g                 1/1     Running   0          4m39s
+kube-system    pod/etcd-controlplane                      1/1     Running   0          4m52s
+kube-system    pod/kube-apiserver-controlplane            1/1     Running   0          4m52s
+kube-system    pod/kube-controller-manager-controlplane   1/1     Running   0          4m52s
+kube-system    pod/kube-proxy-27wdh                       1/1     Running   0          4m40s
+kube-system    pod/kube-scheduler-controlplane            1/1     Running   0          4m52s
+
+NAMESPACE     NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
+default       service/kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP                  4m55s
+kube-system   service/kube-dns     ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   4m51s
+
+NAMESPACE      NAME                             DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+kube-flannel   daemonset.apps/kube-flannel-ds   1         1         1       1            1           <none>                   4m52s
+kube-system    daemonset.apps/kube-proxy        1         1         1       1            1           kubernetes.io/os=linux   4m53s
+
+NAMESPACE     NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+kube-system   deployment.apps/coredns   2/2     2            2           4m51s
+
+NAMESPACE     NAME                               DESIRED   CURRENT   READY   AGE
+kube-system   replicaset.apps/coredns-69f9c977   2         2         2       4m40s
+```
