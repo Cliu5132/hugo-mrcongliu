@@ -1158,3 +1158,97 @@ spec:
 ---
 
 ## Application Lifecycle Management - Practice Test - Multi Container PODs
+
+### Create a multi-container pod with 2 containers.
+
+Solution manifest file to create a multi-container pod called `yellow` as follows:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: yellow
+spec:
+  containers:
+    - name: lemon
+      image: busybox
+      command:
+        - sleep
+        - "1000"
+
+    - name: gold
+      image: redis
+```
+
+### Case Study - ELK Stack
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/9811ec8f-83e1-3057-f65d-bde2cdeafe78.png)
+
+We have deployed an application logging stack in the `elastic-stack` namespace.
+
+```bash
+controlplane ~ ➜  kubectl get pod -n elastic-stack
+NAME             READY   STATUS    RESTARTS   AGE
+app              1/1     Running   0          23m
+elastic-search   1/1     Running   0          23m
+kibana           1/1     Running   0          23m
+
+controlplane ~ ➜
+```
+
+You can inspect the Kibana logs by running:
+
+```bash
+kubectl -n elastic-stack logs kibana
+```
+
+Exec in to the container and inspect logs stored in `/log/app.log`
+
+```bash
+kubectl -n elastic-stack exec -it app -- cat /log/app.log
+```
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/7a0b3606-6f21-9044-8845-ba706ff59a12.png)
+
+Edit the pod in the `elastic-stack` namespace to add a sidecar container to send logs to Elastic Search. Mount the log volume to the sidecar container.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+  namespace: elastic-stack
+  labels:
+    name: app
+spec:
+  containers:
+    - name: app
+      image: kodekloud/event-simulator
+      volumeMounts:
+        - mountPath: /log
+          name: log-volume
+
+    - name: sidecar
+      image: kodekloud/filebeat-configured
+      volumeMounts:
+        - mountPath: /var/log/event-simulator/
+          name: log-volume
+
+  volumes:
+    - name: log-volume
+      hostPath:
+        # directory location on host
+        path: /var/log/webapp
+        # this field is optional
+        type: DirectoryOrCreate
+```
+
+Inspect the Kibana UI. You should now see logs appearing in the Discover section.
+
+You might have to wait for a couple of minutes for the logs to populate. You might have to create an index pattern to list the logs. If not sure check this video: https://bit.ly/2EXYdHf
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/100bd628-7fd5-05c5-9ea5-b1a82568d822.png)
+
+---
+
+## Application Lifecycle Management - Practice Test - Init Containers
