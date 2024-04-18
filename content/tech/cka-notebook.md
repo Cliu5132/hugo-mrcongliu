@@ -684,3 +684,477 @@ kube-system   deployment.apps/coredns   2/2     2            2           4m51s
 NAMESPACE     NAME                               DESIRED   CURRENT   READY   AGE
 kube-system   replicaset.apps/coredns-69f9c977   2         2         2       4m40s
 ```
+
+---
+
+## Scheduling - Practice Test - Static PODs
+
+### How many static pods exist in this cluster in all namespaces?
+
+Run the command `kubectl get pods --all-namespaces` and look for those with `-controlplane` appended in the name
+
+```bash
+controlplane ~ ➜  kubectl get pods --all-namespaces
+NAMESPACE      NAME                                   READY   STATUS    RESTARTS   AGE
+kube-flannel   kube-flannel-ds-ccn9w                  1/1     Running   0          20m
+kube-flannel   kube-flannel-ds-kxsnz                  1/1     Running   0          20m
+kube-system    coredns-69f9c977-gswx4                 1/1     Running   0          20m
+kube-system    coredns-69f9c977-r9m6q                 1/1     Running   0          20m
+kube-system    etcd-controlplane                      1/1     Running   0          20m
+kube-system    kube-apiserver-controlplane            1/1     Running   0          21m
+kube-system    kube-controller-manager-controlplane   1/1     Running   0          20m
+kube-system    kube-proxy-fd8h8                       1/1     Running   0          20m
+kube-system    kube-proxy-vshjj                       1/1     Running   0          20m
+kube-system    kube-scheduler-controlplane            1/1     Running   0          20m
+
+controlplane ~ ➜  kubectl get pods -A
+NAMESPACE      NAME                                   READY   STATUS    RESTARTS   AGE
+kube-flannel   kube-flannel-ds-ccn9w                  1/1     Running   0          20m
+kube-flannel   kube-flannel-ds-kxsnz                  1/1     Running   0          21m
+kube-system    coredns-69f9c977-gswx4                 1/1     Running   0          21m
+kube-system    coredns-69f9c977-r9m6q                 1/1     Running   0          21m
+kube-system    etcd-controlplane                      1/1     Running   0          21m
+kube-system    kube-apiserver-controlplane            1/1     Running   0          21m
+kube-system    kube-controller-manager-controlplane   1/1     Running   0          21m
+kube-system    kube-proxy-fd8h8                       1/1     Running   0          21m
+kube-system    kube-proxy-vshjj                       1/1     Running   0          20m
+kube-system    kube-scheduler-controlplane            1/1     Running   0          21m
+```
+
+- The `coredns` pods are created as part of the `coredns` deployment and hence, it is not a static pod.
+- `kube-proxy` is deployed as a `DaemonSet` and hence, it is not a staic pod.
+- By default, `static pods` are created for the controlplane components and hence, they are only created in the `controlplane` node.
+
+### What is the path of the directory holding the static pod definition files?
+
+First idenity the kubelet config file:
+
+```bash
+root@controlplane:~# ps -aux | grep /usr/bin/kubelet
+root      3668  0.0  1.5 1933476 63076 ?       Ssl  Mar13  16:18 /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --config=/var/lib/kubelet/config.yaml --network-plugin=cni --pod-infra-container-image=k8s.gcr.io/pause:3.2
+root      4879  0.0  0.0  11468  1040 pts/0    S+   00:06   0:00 grep --color=auto /usr/bin/kubelet
+root@controlplane:~#
+```
+
+From the output we can see that the kubelet config file used is `/var/lib/kubelet/config.yaml`.
+Next, lookup the value assigned for `staticPodPath`:
+
+```bash
+root@controlplane:~# grep -i staticpod /var/lib/kubelet/config.yaml
+staticPodPath: /etc/kubernetes/manifests
+root@controlplane:~#
+```
+
+As you can see, the path configured is the `/etc/kubernetes/manifests` directory.
+
+---
+
+## Scheduling - Practice Test - Multiple Schedulers
+
+### What is the name of the POD that deploys the default kubernetes scheduler?
+
+```bash
+controlplane ~ ➜  kubectl get pods --namespace=kube-system
+NAME                                   READY   STATUS    RESTARTS   AGE
+coredns-69f9c977-cwp8j                 1/1     Running   0          8m3s
+coredns-69f9c977-lq49c                 1/1     Running   0          8m3s
+etcd-controlplane                      1/1     Running   0          8m19s
+kube-apiserver-controlplane            1/1     Running   0          8m16s
+kube-controller-manager-controlplane   1/1     Running   0          8m16s
+kube-proxy-lfwzw                       1/1     Running   0          8m3s
+kube-scheduler-controlplane            1/1     Running   0          8m19s
+
+controlplane ~ ➜
+```
+
+### create a POD with the new custom scheduler.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  schedulerName: my-scheduler # add
+  containers:
+    - image: nginx
+      name: nginx
+```
+
+---
+
+# Loggin and Monitoring
+
+## Loggin and Monitoring - Practice Test - Monitor Cluster Components
+
+### Download `metrics-server` from GitHub.
+
+```bash
+controlplane ~ ➜  git clone https://github.com/kodekloudhub/kubernetes-metrics-server.git
+Cloning into 'kubernetes-metrics-server'...
+remote: Enumerating objects: 31, done.
+remote: Counting objects: 100% (19/19), done.
+remote: Compressing objects: 100% (19/19), done.
+remote: Total 31 (delta 8), reused 0 (delta 0), pack-reused 12
+Receiving objects: 100% (31/31), 8.08 KiB | 8.08 MiB/s, done.
+Resolving deltas: 100% (10/10), done.
+```
+
+### Deploy `metrics-server` by creating all the components downloaded.
+
+```bash
+controlplane ~ ➜  pwd
+/root
+
+controlplane ~ ➜  cd kubernetes-metrics-server/
+
+controlplane kubernetes-metrics-server on  master ➜  ls
+aggregated-metrics-reader.yaml  metrics-apiservice.yaml         README.md
+auth-delegator.yaml             metrics-server-deployment.yaml  resource-reader.yaml
+auth-reader.yaml                metrics-server-service.yaml
+
+controlplane kubernetes-metrics-server on  master ➜  kubectl create -f .
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader created
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+serviceaccount/metrics-server created
+deployment.apps/metrics-server created
+service/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+
+controlplane kubernetes-metrics-server on  master ➜
+```
+
+### Display resource (CPU/memory) usage of nodes.
+
+```bash
+controlplane kubernetes-metrics-server on  master ➜  kubectl top node
+NAME           CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+controlplane   258m         0%     1096Mi          0%
+node01         24m          0%     275Mi           0%
+
+controlplane kubernetes-metrics-server on  master ➜
+```
+
+### Identify the node that consumes the `most` CPU(cores).
+
+```bash
+controlplane kubernetes-metrics-server on  master ➜  kubectl top node --sort-by='cpu' --no-headers | head -1
+controlplane   265m   0%    1099Mi   0%
+
+controlplane kubernetes-metrics-server on  master ➜
+```
+
+Here we have used `head -1` command to print the pod first in the order, which is the one that uses the most CPU(cores).
+
+---
+
+## Loggin and Monitoring - Practice Test - Managing Application Logs
+
+### Identify the log recorded for USER5 accessing the pod `webapp-1`.
+
+```bash
+controlplane ~ ➜  kubectl logs webapp-1 | grep USER5
+[2024-04-17 12:32:52,976] WARNING in event-simulator: USER5 Failed to Login as the account is locked due to MANY FAILED ATTEMPTS.
+[2024-04-17 12:32:57,981] WARNING in event-simulator: USER5 Failed to Login as the account is locked due to MANY FAILED ATTEMPTS.
+```
+
+---
+
+# Application Lifecycle Management
+
+## Application Lifecycle Management - Practice Test - Rolling Updates and Rollbacks
+
+### Inspect the deployment `frontend` and identify the number of PODs deployed by it.
+
+Run the command `kubectl describe deployment` and look at `Desired Replicas`
+
+```bash
+controlplane ~ ➜  kubectl describe deployment frontend
+Name:                   frontend
+Namespace:              default
+CreationTimestamp:      Wed, 17 Apr 2024 12:44:41 +0000
+Labels:                 <none>
+Annotations:            deployment.kubernetes.io/revision: 1
+Selector:               name=webapp
+Replicas:               4 desired | 4 updated | 4 total | 4 available | 0 unavailable # Desired Replicas
+StrategyType:           RollingUpdate # Strategy Type
+MinReadySeconds:        20
+RollingUpdateStrategy:  25% max unavailable, 25% max surge # Max Unavailable Value
+Pod Template:
+  Labels:  name=webapp
+  Containers:
+   simple-webapp:
+    Image:        kodekloud/webapp-color:v1 # Image
+    Port:         8080/TCP
+    Host Port:    0/TCP
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   frontend-685dfcc44 (4/4 replicas created)
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  13m   deployment-controller  Scaled up replica set frontend-685dfcc44 to 4
+
+controlplane ~ ➜
+```
+
+### Create a deployment with a strategy of `Recreate`
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: default
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      name: webapp
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        name: webapp
+    spec:
+      containers:
+        - image: kodekloud/webapp-color:v2
+          name: simple-webapp
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+```
+
+---
+
+## Application Lifecycle Management - Practice Test - Commands and Arguments
+
+### Create a pod with the `ubuntu` image to run a container to sleep for 5000 seconds.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper-2
+spec:
+  containers:
+    - name: ubuntu
+      image: ubuntu
+      command:
+        - "sleep"
+        - "5000"
+```
+
+### How can pod's command override Dockerfile's?
+
+Assume the image was created from the Dockerfile in this directory.
+The `ENTRYPOINT` in the `Dockerfile` is overridden by the `command` in the pod definition file.
+The command that will be run is just `--color green`.
+
+```bash
+controlplane ~/webapp-color-2 ➜  cat Dockerfile
+FROM python:3.6-alpine
+
+RUN pip install flask
+
+COPY . /opt/
+
+EXPOSE 8080
+
+WORKDIR /opt
+
+ENTRYPOINT ["python", "app.py"]
+
+CMD ["--color", "red"]
+
+controlplane ~/webapp-color-2 ➜  cat webapp-color-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-green
+  labels:
+      name: webapp-green
+spec:
+  containers:
+  - name: simple-webapp
+    image: kodekloud/webapp-color
+    command: ["--color","green"]
+```
+
+Using the `command` and `args` in the pod definition file.
+Note, `args` will override the `CMD` inside Dockerfile, `command` will override `ENTRYPOINT` IN Dockerfile.
+Below, the command that will run is `python app.py --color pink`.
+
+```bash
+controlplane ~/webapp-color-3 ➜  cat Dockerfile
+FROM python:3.6-alpine
+
+RUN pip install flask
+
+COPY . /opt/
+
+EXPOSE 8080
+
+WORKDIR /opt
+
+ENTRYPOINT ["python", "app.py"]
+
+CMD ["--color", "red"]
+
+controlplane ~/webapp-color-3 ➜  cat webapp-color-pod-2.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-green
+  labels:
+      name: webapp-green
+spec:
+  containers:
+  - name: simple-webapp
+    image: kodekloud/webapp-color
+    command: ["python", "app.py"]
+    args: ["--color", "pink"]
+```
+
+---
+
+## Application Lifecycle Management - Practice Test - Env Variables
+
+### How to pass in env var `APP_COLOR=green` into pod `webapp-color`?
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    name: webapp-color
+  name: webapp-color
+  namespace: default
+spec:
+  containers:
+    - env:
+        - name: APP_COLOR
+          value: green
+      image: kodekloud/webapp-color
+      name: webapp-color
+```
+
+### How to get all configMaps?
+
+```bash
+kubectl get configmaps
+```
+
+### Create a ConfigMap `webapp-config-map`, using pod `webapp-color`, data `APP_COLOR=darkblue` and `APP_OTHER=disregard`.
+
+```bash
+kubectl create configmap  webapp-config-map --from-literal=APP_COLOR=darkblue --from-literal=APP_OTHER=disregard
+```
+
+Update Pod `webapp-color`
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    name: webapp-color
+  name: webapp-color
+  namespace: default
+spec:
+  containers:
+    - env:
+        - name: APP_COLOR
+          valueFrom:
+            configMapKeyRef:
+              name: webapp-config-map # Config Map Name
+              key: APP_COLOR # key
+      image: kodekloud/webapp-color
+      name: webapp-color
+```
+
+---
+
+## Application Lifecycle Management - Practice Test - Secrets
+
+### How to get all secrets?
+
+```bash
+controlplane ~ ➜  k get secrets
+NAME              TYPE                                  DATA   AGE
+dashboard-token   kubernetes.io/service-account-token   3      73s
+```
+
+### How to get the details of a secret?
+
+```bash
+controlplane ~ ➜  k describe secret dashboard-token
+Name:         dashboard-token
+Namespace:    default
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name: dashboard-sa
+              kubernetes.io/service-account.uid: b8bdfa74-fbf3-4772-82f9-d58b5f64b2dc
+
+Type:  kubernetes.io/service-account-token # type
+
+Data
+====
+ca.crt:     570 bytes
+namespace:  7 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IkFnWFdoaUQ4aW1vbkhrME12RmMxZHlzMVB4bGN1SXQ1RmItN2wzd2pBY0EifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImRhc2hib2FyZC10b2tlbiIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJkYXNoYm9hcmQtc2EiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJiOGJkZmE3NC1mYmYzLTQ3NzItODJmOS1kNThiNWY2NGIyZGMiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6ZGVmYXVsdDpkYXNoYm9hcmQtc2EifQ.pS1kDefKVp3K1aR_l-j0iXbIlRZsSXrqXG0alWmkG4ZvlTN9j3l9pxYY9i_AIFWoaMVdSW9uubJaCeRCpUAjm4QyQxM0yukJtWqpvMtfQI0dYiJt927QBPWKqQ8nKvU9IjvRFc4n8dZR4dVBAjv7ZhCRI2uiJdc24JtB9LzIqaUMGiHmNJkNzjsrNJoUP-G582j6IyG-MFDtFEBfqIkXuS4HlupSoINskyEFfz4lkRuCEASCkVVFt-b_i3yFj50l-WBlx1RmygAdS7ffQzaTZWDt0tJdhHsDlScSKHHg8TR7Wnv-GEr3PTLtNNOBLOSmswxD6wdDM59Z6X1E9W-vGQ
+
+controlplane ~ ➜
+```
+
+### Deploy an application with the below architecture
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/37d08679-b2b5-6c62-8864-4c3dce18f963.png)
+
+### Create a new secret named `db-secret` with the data given below.
+
+- Secret Name: `db-secret`
+
+- Secret 1: `DB_Host=sql01`
+
+- Secret 2: `DB_User=root`
+
+- Secret 3: `DB_Password=password123`
+
+```bash
+kubectl create secret generic db-secret --from-literal=DB_Host=sql01 --from-literal=DB_User=root --from-literal=DB_Password=password123
+```
+
+### Configure `webapp-pod` to load environment variables from the newly created secret.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    name: webapp-pod
+  name: webapp-pod
+  namespace: default
+spec:
+  containers:
+    - image: kodekloud/simple-webapp-mysql
+      imagePullPolicy: Always
+      name: webapp
+      envFrom:
+        - secretRef:
+            name: db-secret # here
+```
+
+---
+
+## Application Lifecycle Management - Practice Test - Multi Container PODs
