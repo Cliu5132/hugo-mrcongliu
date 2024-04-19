@@ -1252,3 +1252,33 @@ You might have to wait for a couple of minutes for the logs to populate. You mig
 ---
 
 ## Application Lifecycle Management - Practice Test - Init Containers
+
+> Init containers: specialized containers that run before app containers in a Pod.
+
+### How to add `initContainers` to a pod?
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: red
+  namespace: default
+spec:
+  containers:
+    - command:
+        - sh
+        - -c
+        - echo The app is running! && sleep 3600
+      image: busybox:1.28
+      name: red-container
+  initContainers:
+    - image: busybox
+      name: red-initcontainer
+      command:
+        - "sleep"
+        - "20"
+```
+
+{{< notice note >}}
+In Kubernetes manifest files like **YAML**, strings that contain special characters (such as spaces) need to be enclosed in double quotes to be interpreted correctly. In the first command example, where the command is specified as a list of strings, each element is treated as an **individual string** and doesn't require double quotes. In the second command example, where the command is specified as a list of strings but includes a command with a **special character** ("sleep"), each string element needs to be enclosed in double quotes to ensure proper interpretation by Kubernetes.
+{{< /notice >}}
