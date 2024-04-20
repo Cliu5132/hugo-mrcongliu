@@ -1282,3 +1282,797 @@ spec:
 {{< notice note >}}
 In Kubernetes manifest files like **YAML**, strings that contain special characters (such as spaces) need to be enclosed in double quotes to be interpreted correctly. In the first command example, where the command is specified as a list of strings, each element is treated as an **individual string** and doesn't require double quotes. In the second command example, where the command is specified as a list of strings but includes a command with a **special character** ("sleep"), each string element needs to be enclosed in double quotes to ensure proper interpretation by Kubernetes.
 {{< /notice >}}
+
+---
+
+# Cluster Maintenance
+
+## Cluster Maintenance - Practice Test - OS Upgrades
+
+### We need to take `node01` out for maintenance. Empty the node of all applications and mark it unschedulable.
+
+```bash
+kubectl drain node01 --ignore-daemonsets
+```
+
+When you use `kubectl drain` with the `--ignore-daemonsets` flag on a node, you're essentially telling Kubernetes to evict all the pods running on that node, excluding the ones that are part of a DaemonSet.
+
+DaemonSets are a type of controller in Kubernetes that ensure that a specific pod runs on all (or some) nodes in a cluster. They're often used for system daemons like monitoring agents or networking components that need to be present on every node.
+
+So, by using `kubectl drain node01 --ignore-daemonsets`, you're ensuring that all pods on `node01` are gracefully evicted, but the DaemonSet pods will remain running, ensuring that essential system services continue to operate across the cluster. This command is often used when you need to perform maintenance or decommission a node without disrupting critical system components.
+
+```bash
+controlplane ~ ➜  kubectl drain node01 --ignore-daemonsets
+node/node01 cordoned
+Warning: ignoring DaemonSet-managed Pods: kube-flannel/kube-flannel-ds-f4dqq, kube-system/kube-proxy-snkqt
+evicting pod default/blue-667bf6b9f9-rhtmv
+evicting pod default/blue-667bf6b9f9-6sxqp
+pod/blue-667bf6b9f9-rhtmv evicted
+pod/blue-667bf6b9f9-6sxqp evicted
+node/node01 drained
+
+controlplane ~ ➜
+```
+
+In this case, all pods on `node01` will be moved to `controlplane`.
+
+### Why?
+
+```bash
+root@controlplane:~# kubectl describe node controlplane | grep -i  taint
+Taints:             <none>
+root@controlplane:~#
+```
+
+Since there are no taints on the controlplane node, all the pods were started on it when we ran the kubectl drain node01 command.
+
+### The maintenance tasks have been completed. Configure the node `node01` to be schedulable again.
+
+```bash
+kubectl uncordon node01
+```
+
+```bash
+controlplane ~ ➜  kubectl uncordon node01
+node/node01 uncordoned
+
+controlplane ~ ➜
+```
+
+At this point, there are no pods on `node01`.
+
+Running the `uncordon` command on a node will not automatically schedule pods on the node. When new pods are created, they will be placed on `node01`.
+
+### To drain a node containing a pod which is not part of a replicaset (losing it)
+
+```bash
+controlplane ~ ➜  kubectl drain node01 --ignore-daemonsets
+node/node01 cordoned
+error: unable to drain node "node01" due to error:cannot delete Pods declare no controller (use --force to override): default/hr-app, continuing command...
+There are pending nodes to be drained:
+ node01
+cannot delete Pods declare no controller (use --force to override): default/hr-app
+```
+
+Run: `kubectl get pods -o wide` and you will see that there is a single pod scheduled on node01 which is not part of a replicaset.
+
+The drain command will not work in this case. To forcefully drain the node we now have to use the `--force` flag.
+
+```bash
+kubectl drain node01 --ignore-daemonsets --force
+```
+
+{{< notice note >}}
+A forceful drain of the node will delete any pod that is not part of a replicaset.
+{{< /notice >}}
+
+### To drain a node containing a pod which is not part of a replicaset (keeping it)
+
+`hr-app` is a critical app and we do not want it to be removed and we do not want to schedule any more pods on `node01`.
+Mark `node01` as `unschedulable` so that no new pods are scheduled on this node.
+
+```bash
+kubectl cordon node01
+```
+
+Do not drain `node01`, instead use the `kubectl cordon node01` command. This will ensure that no new pods are scheduled on this node and the existing pods will not be affected by this operation.
+
+## Cluster Maintenance - Practice Test - Cluster Upgrade Process
+
+### What is the current version of the cluster?
+
+```bash
+controlplane ~ ✖ kubectl version
+Client Version: v1.28.0
+Kustomize Version: v5.0.4-0.20230601165947-6ce0bf390ce3
+Server Version: v1.28.0
+
+controlplane ~ ➜  kubectl get nodes
+NAME           STATUS   ROLES           AGE   VERSION
+controlplane   Ready    control-plane   53m   v1.28.0
+node01         Ready    <none>          52m   v1.28.0
+
+controlplane ~ ➜
+```
+
+### How many nodes can host workloads in this cluster?
+
+```bash
+controlplane ~ ➜  kubectl describe nodes  controlplane | grep -i taint
+Taints:             <none>
+
+controlplane ~ ➜  kubectl describe nodes  node01 | grep -i taint
+Taints:             <none>
+
+controlplane ~ ➜
+```
+
+We can see that neither nodes have taints. This means that both nodes have the ability to schedule workloads on them.
+
+### How many deployments are in this cluster? Which pod are they on?
+
+```bash
+controlplane ~ ➜  kubectl get deployments
+NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+blue   5/5     5            5           10m
+
+controlplane ~ ➜  kubectl get pod -o wide
+NAME                    READY   STATUS    RESTARTS   AGE   IP           NODE           NOMINATED NODE   READINESS GATES
+blue-667bf6b9f9-bsm62   1/1     Running   0          12m   10.244.1.4   node01         <none>           <none>
+blue-667bf6b9f9-gswl9   1/1     Running   0          12m   10.244.0.5   controlplane   <none>           <none>
+blue-667bf6b9f9-hlbbv   1/1     Running   0          12m   10.244.0.4   controlplane   <none>           <none>
+blue-667bf6b9f9-q46lw   1/1     Running   0          12m   10.244.1.2   node01         <none>           <none>
+blue-667bf6b9f9-qg99l   1/1     Running   0          12m   10.244.1.3   node01         <none>           <none>
+
+controlplane ~ ➜
+```
+
+### You are tasked to upgrade the cluster.
+
+Users accessing the applications must not be impacted, and you cannot provision new VMs. What strategy would you use to upgrade the cluster?
+
+> In order to ensure minimum downtime, upgrade the cluster **one node at a time**, while moving the workloads to another node.
+
+### What is the latest version available for an upgrade with the current version of the kubeadm tool installed?
+
+```bash
+controlplane ~ ➜  kubeadm upgrade plan
+[upgrade/config] Making sure the configuration is correct:
+[upgrade/config] Reading configuration from the cluster...
+[upgrade/config] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+[preflight] Running pre-flight checks.
+[upgrade] Running cluster health checks
+[upgrade] Fetching available versions to upgrade to
+[upgrade/versions] Cluster version: v1.28.0
+[upgrade/versions] kubeadm version: v1.28.0
+I0419 22:47:23.381941   17369 version.go:256] remote version is much newer: v1.30.0; falling back to: stable-1.28
+[upgrade/versions] Target version: v1.28.9
+[upgrade/versions] Latest version in the v1.28 series: v1.28.9
+
+Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
+COMPONENT   CURRENT       TARGET
+kubelet     2 x v1.28.0   v1.28.9
+
+Upgrade to the latest version in the v1.28 series:
+
+COMPONENT                 CURRENT   TARGET
+kube-apiserver            v1.28.0   v1.28.9
+kube-controller-manager   v1.28.0   v1.28.9
+kube-scheduler            v1.28.0   v1.28.9
+kube-proxy                v1.28.0   v1.28.9
+CoreDNS                   v1.10.1   v1.10.1
+etcd                      3.5.9-0   3.5.9-0
+
+You can now apply the upgrade by executing the following command:
+
+        kubeadm upgrade apply v1.28.9
+
+Note: Before you can perform this upgrade, you have to update kubeadm to v1.28.9.
+
+_____________________________________________________________________
+
+
+The table below shows the current state of component configs as understood by this version of kubeadm.
+Configs that have a "yes" mark in the "MANUAL UPGRADE REQUIRED" column require manual config upgrade or
+resetting to kubeadm defaults before a successful upgrade can be performed. The version to manually
+upgrade to is denoted in the "PREFERRED VERSION" column.
+
+API GROUP                 CURRENT VERSION   PREFERRED VERSION   MANUAL UPGRADE REQUIRED
+kubeproxy.config.k8s.io   v1alpha1          v1alpha1            no
+kubelet.config.k8s.io     v1beta1           v1beta1             no
+_____________________________________________________________________
+
+
+controlplane ~ ➜
+```
+
+### We will be upgrading the controlplane node first.
+
+Drain the controlplane node of workloads and mark it `UnSchedulable`.
+
+```bash
+kubectl drain controlplane --ignore-daemonsets
+```
+
+There are `daemonsets` created in this cluster, especially in the **kube-system** namespace. To ignore these objects and drain the node, we can make use of the `--ignore-daemonsets` flag.
+
+### Upgrade the `controlplane` components to exact version `v1.29.0`
+
+To seamlessly transition from Kubernetes v1.28 to v1.29 and gain access to the packages specific to the desired Kubernetes minor version, follow these essential steps during the upgrade process. This ensures that your environment is appropriately configured and aligned with the features and improvements introduced in Kubernetes v1.29.
+
+On the `controlplane` node:
+
+Use any text editor you prefer to open the file that defines the Kubernetes apt repository.
+
+```bash
+vim /etc/apt/sources.list.d/kubernetes.list
+```
+
+Update the version in the URL to the next available minor release, i.e v1.29.
+
+```bash
+deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
+```
+
+After making changes, save the file and exit from your text editor. Proceed with the next instruction.
+
+```bash
+root@controlplane:~# apt update
+root@controlplane:~# apt-cache madison kubeadm
+```
+
+Based on the version information displayed by `apt-cache madison`, it indicates that for Kubernetes version `1.29.0`, the available package version is `1.29.0-1.1`. Therefore, to install kubeadm for Kubernetes `v1.29.0`, use the following command:
+
+```bash
+root@controlplane:~# apt-get install kubeadm=1.29.0-1.1
+```
+
+Run the following command to upgrade the Kubernetes cluster.
+
+```bash
+root@controlplane:~# kubeadm upgrade plan v1.29.0
+root@controlplane:~# kubeadm upgrade apply v1.29.0
+```
+
+> Note that the above steps can take a few minutes to complete.
+
+Now, upgrade the version and restart Kubelet. Also, mark the node (in this case, the "controlplane" node) as schedulable.
+
+```bash
+root@controlplane:~# apt-get install kubelet=1.29.0-1.1
+root@controlplane:~# systemctl daemon-reload
+root@controlplane:~# systemctl restart kubelet
+root@controlplane:~# kubectl uncordon controlplane
+```
+
+### Upgrade the `node01` components to exact version `v1.29.0`
+
+Drain the `node01` node of workloads and mark it `UnSchedulable`.
+
+```bash
+kubectl drain node01 --ignore-daemonsets
+```
+
+Make sure you are on `node01`.
+
+> If you are on the `controlplane` node, run `ssh node01` to log in to the `node01`.
+
+Use any text editor you prefer to open the file that defines the Kubernetes apt repository.
+
+```bash
+vim /etc/apt/sources.list.d/kubernetes.list
+```
+
+Update the version in the URL to the next available minor release, i.e v1.29.
+
+```bash
+deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
+```
+
+After making changes, save the file and exit from your text editor. Proceed with the next instruction.
+
+```bash
+root@node01:~# apt update
+root@node01:~# apt-cache madison kubeadm
+```
+
+Based on the version information displayed by `apt-cache madison`, it indicates that for Kubernetes version `1.29.0`, the available package version is `1.29.0-1.1`. Therefore, to install kubeadm for Kubernetes `v1.29.0`, use the following command:
+
+```bash
+root@node01:~# apt-get install kubeadm=1.29.0-1.1
+# Upgrade the node
+root@node01:~# kubeadm upgrade node
+```
+
+Now, upgrade the version and restart Kubelet.
+
+```bash
+root@node01:~# apt-get install kubelet=1.29.0-1.1
+root@node01:~# systemctl daemon-reload
+root@node01:~# systemctl restart kubelet
+root@node01:~# kubectl uncordon node01
+```
+
+> Type `exit` or `logout` or enter `CTRL + d` to go back to the `controlplane` node.
+
+---
+
+## Cluster Maintenance - Practice Test - Backup and Restore Methods
+
+### What is the version of ETCD running on the cluster?
+
+Look at the ETCD Logs OR check the image used by ETCD pod.
+
+```bash
+controlplane ~ ➜  kubectl -n kube-system describe pod etcd-controlplane | grep Image:
+    Image:         registry.k8s.io/etcd:3.5.10-0
+
+controlplane ~ ➜  kubectl -n kube-system logs etcd-controlplane | grep -i 'etcd-version'
+"etcd-version":"3.5.10"
+
+controlplane ~ ➜
+```
+
+### At what address can you reach the ETCD cluster from the controlplane node?
+
+```bash
+kubectl -n kube-system describe pod etcd-controlplane | grep '\--listen-client-urls'
+```
+
+```bash
+controlplane ~ ➜  kubectl -n kube-system describe pod etcd-controlplane | grep '\--listen-client-urls'
+      --listen-client-urls=https://127.0.0.1:2379,https://192.6.109.3:2379
+```
+
+### Where is the ETCD server certificate file located?
+
+```bash
+kubectl -n kube-system describe pod etcd-controlplane | grep '\--cert-file'
+```
+
+```bash
+controlplane ~ ➜  kubectl -n kube-system describe pod etcd-controlplane | grep '\--cert-file'
+      --cert-file=/etc/kubernetes/pki/etcd/server.crt
+```
+
+### Where is the ETCD CA Certificate file located?
+
+```bash
+kubectl -n kube-system describe pod etcd-controlplane | grep '\--trusted-ca-file'
+```
+
+```bash
+controlplane ~ ➜  kubectl -n kube-system describe pod etcd-controlplane | grep '\--trusted-ca-file'
+      --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+```
+
+### Take a snapshot of the ETCD database using the built-in snapshot functionality.
+
+The master node in our cluster is planned for a regular maintenance reboot tonight. While we do not anticipate anything to go wrong, we are required to take the necessary backups. Store the backup file at location `/opt/snapshot-pre-boot.db`
+
+```bash
+controlplane ~ ✖ ETCDCTL_API=3 etcdctl --endpoints=https://[127.0.0.1]:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key \
+snapshot save /opt/snapshot-pre-boot.db
+Snapshot saved at /opt/snapshot-pre-boot.db
+
+controlplane ~ ➜
+```
+
+Use the `etcdctl snapshot save` command. You will have to make use of additional flags to connect to the ETCD server.
+
+- `--endpoints`: Optional Flag, points to the address where ETCD is running (127.0.0.1:2379)
+
+- `--cacert`: Mandatory Flag (Absolute Path to the CA certificate file)
+
+- `--cert`: Mandatory Flag (Absolute Path to the Server certificate file)
+
+- `--key`: Mandatory Flag (Absolute Path to the Key file)
+
+### Some Thing Went Wrong...
+
+Luckily we took a backup. Restore the original state of the cluster using the backup file.
+
+Restore the etcd to a new directory from the snapshot by using the `etcdctl snapshot restore` command. Once the directory is restored, update the ETCD configuration to use the restored directory.
+
+1. Restore the snapshot:
+
+```bash
+controlplane ~ ✖  ETCDCTL_API=3 etcdctl  --data-dir /var/lib/etcd-from-backup \
+snapshot restore /opt/snapshot-pre-boot.db
+2024-04-20 04:44:39.173832 I | mvcc: restore compact to 1306
+2024-04-20 04:44:39.179565 I | etcdserver/membership: added member 8e9e05c52164694d [http://localhost:2380] to cluster cdf818194e3a8c32
+
+controlplane ~ ➜
+```
+
+> Note: In this case, we are restoring the snapshot to a different directory but in the same server where we took the backup (the controlplane node) As a result, the only required option for the restore command is the `--data-dir`.
+
+2. Update the `/etc/kubernetes/manifests/etcd.yaml`:
+
+We have now restored the etcd snapshot to a new path on the controlplane - `/var/lib/etcd-from-backup`, so, the only change to be made in the YAML file, is to change the hostPath for the volume called `etcd-data` from old directory (`/var/lib/etcd`) to the new directory (`/var/lib/etcd-from-backup`).
+
+```yaml
+volumes:
+  - hostPath:
+      path: /var/lib/etcd-from-backup
+      type: DirectoryOrCreate
+    name: etcd-data
+```
+
+With this change, `/var/lib/etcd` on the container points to `/var/lib/etcd-from-backup` on the `controlplane` (which is what we want).
+
+When this file is updated, the `ETCD` pod is automatically re-created as this is a static pod placed under the `/etc/kubernetes/manifests` directory.
+
+> Note 1: As the ETCD pod has changed it will automatically restart, and also `kube-controller-manager` and `kube-scheduler`. Wait 1-2 to mins for this pods to restart. You can run the command: `watch "crictl ps | grep etcd"` to see when the ETCD pod is restarted.
+
+> Note 2: If the etcd pod is not getting `Ready 1/1`, then restart it by `kubectl delete pod -n kube-system etcd-controlplane` and wait 1 minute.
+
+> Note 3: This is the simplest way to make sure that ETCD uses the restored data after the ETCD pod is recreated. You don't have to change anything else.
+
+If you do change `--data-dir` to `/var/lib/etcd-from-backup` in the ETCD YAML file, make sure that the `volumeMounts` for `etcd-data` is updated as well, with the mountPath pointing to `/var/lib/etcd-from-backup` (THIS COMPLETE STEP IS OPTIONAL AND NEED NOT BE DONE FOR COMPLETING THE RESTORE)
+
+---
+
+## Cluster Maintenance - Practice Test - Backup and Restore Methods 2
+
+### How many `clusters` are defined in the kubeconfig on the `student-node`?
+
+You can view the complete `kubeconfig` by running: `kubectl config view`
+
+```bash
+student-node ~ ➜  kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://cluster1-controlplane:6443
+  name: cluster1
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://192.5.35.3:6443
+  name: cluster2
+contexts:
+- context:
+    cluster: cluster1
+    user: cluster1
+  name: cluster1
+- context:
+    cluster: cluster2
+    user: cluster2
+  name: cluster2
+current-context: cluster1
+kind: Config
+preferences: {}
+users:
+- name: cluster1
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+- name: cluster2
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+
+student-node ~ ➜
+```
+
+Alternatively, run the `kubectl config get-clusters` to just display the clusters:
+
+```bash
+student-node ~ ➜  kubectl config get-clusters
+NAME
+cluster2
+cluster1
+
+student-node ~ ➜
+```
+
+### How many nodes (both controlplane and worker) are part of `cluster1`?
+
+Make sure to switch the context to `cluster1`:
+
+```bash
+kubectl config use-context cluster1
+```
+
+```bash
+student-node ~ ➜  kubectl config use-context cluster1
+Switched to context "cluster1".
+
+student-node ~ ➜  kubectl get nodes
+NAME                    STATUS   ROLES           AGE   VERSION
+cluster1-controlplane   Ready    control-plane   84m   v1.24.0
+cluster1-node01         Ready    <none>          83m   v1.24.0
+
+student-node ~ ➜
+```
+
+Therefore, `cluster1` has two nodes.
+
+### How is ETCD configured for `cluster1`?
+
+Remember, you can access the clusters from `student-node` using the `kubectl` tool. You can also `ssh` to the cluster nodes from the `student-node`.
+
+Make sure to switch the context to `cluster1`:
+
+```bash
+student-node ~ ➜  kubectl config use-context cluster1
+Switched to context "cluster1".
+
+student-node ~ ➜  kubectl get pods -n kube-system | grep etcd
+etcd-cluster1-controlplane                      1/1     Running   0             88m
+
+student-node ~ ➜
+```
+
+If you check out the pods running in the `kube-system` namespace in `cluster1`, you will notice that `etcd` is running as a pod:
+
+This means that ETCD is set up as a `Stacked ETCD Topology` where the distributed data storage cluster provided by `etcd` is stacked on top of the cluster formed by the nodes managed by kubeadm that run control plane components.
+
+### How is ETCD configured for `cluster2`?
+
+Using the same approach as above, we can see there is no `etcd` pods running in this cluster.
+
+```bash
+student-node ~ ➜  kubectl config use-context cluster2
+Switched to context "cluster2".
+
+student-node ~ ➜   kubectl get pods -n kube-system  | grep etcd
+
+student-node ~ ✖
+```
+
+So we can ssh into cluster2, only to see there is NO static pod configuration for etcd under the static pod path:
+
+```bash
+student-node ~ ✖ ssh cluster2-controlplane
+Welcome to Ubuntu 18.04.6 LTS (GNU/Linux 5.4.0-1106-gcp x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+This system has been minimized by removing packages and content that are
+not required on a system that users do not log into.
+
+To restore this content, you can run the 'unminimize' command.
+
+cluster2-controlplane ~ ➜  ls /etc/kubernetes/manifests/ | grep -i etcd
+
+cluster2-controlplane ~ ✖
+```
+
+However, if you inspect the process on the controlplane for cluster2, you will see that that the process for the `kube-apiserver` is referencing an external etcd datastore:
+
+```bash
+cluster2-controlplane ~ ✖ ps -ef | grep etcd
+root        1725    1389  0 03:40 ?        00:03:25 kube-apiserver --advertise-address=192.5.35.3 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.pem --etcd-certfile=/etc/kubernetes/pki/etcd/etcd.pem --etcd-keyfile=/etc/kubernetes/pki/etcd/etcd-key.pem --etcd-servers=https://192.5.35.14:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+root       10257   10039  0 05:16 pts/0    00:00:00 grep etcd
+
+cluster2-controlplane ~ ➜
+```
+
+You can see the same information by inspecting the `kube-apiserver` pod (which runs as a static pod in the kube-system namespace):
+
+```bash
+cluster2-controlplane ~ ➜  kubectl -n kube-system describe pod kube-apiserver-cluster2-controlplane
+Name:                 kube-apiserver-cluster2-controlplane
+Namespace:            kube-system
+Priority:             2000001000
+Priority Class Name:  system-node-critical
+Node:                 cluster2-controlplane/192.5.35.3
+Start Time:           Sat, 20 Apr 2024 03:41:10 +0000
+Labels:               component=kube-apiserver
+                      tier=control-plane
+Annotations:          kubeadm.kubernetes.io/kube-apiserver.advertise-address.endpoint: 192.5.35.3:6443
+                      kubernetes.io/config.hash: 046fd3d7e89b50d726a714e5471a3269
+                      kubernetes.io/config.mirror: 046fd3d7e89b50d726a714e5471a3269
+                      kubernetes.io/config.seen: 2024-04-20T03:41:09.844426451Z
+                      kubernetes.io/config.source: file
+                      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+Status:               Running
+IP:                   192.5.35.3
+IPs:
+  IP:           192.5.35.3
+Controlled By:  Node/cluster2-controlplane
+Containers:
+  kube-apiserver:
+    Container ID:  containerd://3c9c999d5407daf0fec09c4e5434cf3b7567e818a58788540dc1bb357458dd96
+    Image:         k8s.gcr.io/kube-apiserver:v1.24.0
+    Image ID:      k8s.gcr.io/kube-apiserver@sha256:a04522b882e919de6141b47d72393fb01226c78e7388400f966198222558c955
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      kube-apiserver
+      --advertise-address=192.5.35.3
+      --allow-privileged=true
+      --authorization-mode=Node,RBAC
+      --client-ca-file=/etc/kubernetes/pki/ca.crt
+      --enable-admission-plugins=NodeRestriction
+      --enable-bootstrap-token-auth=true
+      --etcd-cafile=/etc/kubernetes/pki/etcd/ca.pem
+      --etcd-certfile=/etc/kubernetes/pki/etcd/etcd.pem
+      --etcd-keyfile=/etc/kubernetes/pki/etcd/etcd-key.pem
+      --etcd-servers=https://192.5.35.14:2379 # look at here
+--------- End of Snippet---------
+```
+
+### What is the default data directory used the for ETCD datastore used in `cluster1`?
+
+Inspect the value assigned to `data-dir` on the `etcd` pod:
+
+```bash
+student-node ~ ✖ kubectl config use-context cluster1
+Switched to context "cluster1".
+
+student-node ~ ➜  kubectl -n kube-system describe pod etcd-cluster1-controlplane | grep data-dir
+      --data-dir=/var/lib/etcd
+
+student-node ~ ➜
+```
+
+### What is the default data directory used the for ETCD datastore used in `cluster2`?
+
+SSH to the `etcd-server` and inspect the `etcd` process as shown below:
+
+```bash
+
+student-node ~ ➜  ssh etcd-server
+Welcome to Ubuntu 18.04.6 LTS (GNU/Linux 5.4.0-1106-gcp x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+This system has been minimized by removing packages and content that are
+not required on a system that users do not log into.
+
+To restore this content, you can run the 'unminimize' command.
+
+etcd-server ~ ➜   kubectl -n kube-system describe pod etcd-cluster1-controlplane | grep data-dir
+-bash: kubectl: command not found
+
+etcd-server ~ ✖ ps -ef | grep etcd
+etcd         833       1  0 03:40 ?        00:01:19 /usr/local/bin/etcd --name etcd-server --data-dir=/var/lib/etcd-data --cert-file=/etc/etcd/pki/etcd.pem --key-file=/etc/etcd/pki/etcd-key.pem --peer-cert-file=/etc/etcd/pki/etcd.pem --peer-key-file=/etc/etcd/pki/etcd-key.pem --trusted-ca-file=/etc/etcd/pki/ca.pem --peer-trusted-ca-file=/etc/etcd/pki/ca.pem --peer-client-cert-auth --client-cert-auth --initial-advertise-peer-urls https://192.5.35.14:2380 --listen-peer-urls https://192.5.35.14:2380 --advertise-client-urls https://192.5.35.14:2379 --listen-client-urls https://192.5.35.14:2379,https://127.0.0.1:2379 --initial-cluster-token etcd-cluster-1 --initial-cluster etcd-server=https://192.5.35.14:2380 --initial-cluster-state new
+root        1105     983  0 05:29 pts/0    00:00:00 grep etcd
+
+etcd-server ~ ➜
+```
+
+### How many nodes are part of the ETCD cluster that `etcd-server` is a part of?
+
+```bash
+etcd-server ~ ➜  ETCDCTL_API=3 etcdctl \
+>  --endpoints=https://127.0.0.1:2379 \
+>  --cacert=/etc/etcd/pki/ca.pem \
+>  --cert=/etc/etcd/pki/etcd.pem \
+>  --key=/etc/etcd/pki/etcd-key.pem \
+>   member list
+820681864077f749, started, etcd-server, https://192.5.35.14:2380, https://192.5.35.14:2379, false
+
+etcd-server ~ ➜
+```
+
+### Take a backup of etcd on `cluster1` and save it on the `student-node` at the path `/opt/cluster1.db`
+
+On the `student-node`:
+
+1. First set the context to `cluster1`:
+2. Next, inspect the endpoints and certificates used by the `etcd` pod. We will make use of these to take the backup.
+3. SSH to the `controlplane` node of `cluster1` and then take the backup using the endpoints and certificates we identified above.
+4. Finally, copy the backup to the `student-node`. To do this, go back to the `student-node` and use `scp` as shown below.
+
+```bash
+student-node ~ ➜  kubectl config use-context cluster1
+Switched to context "cluster1".
+
+student-node ~ ➜  kubectl describe  pods -n kube-system etcd-cluster1-controlplane  | grep advertise-client-urls
+Annotations:          kubeadm.kubernetes.io/etcd.advertise-client-urls: https://192.5.35.22:2379
+      --advertise-client-urls=https://192.5.35.22:2379
+
+student-node ~ ➜  kubectl describe  pods -n kube-system etcd-cluster1-controlplane  | grep pki
+      --cert-file=/etc/kubernetes/pki/etcd/server.crt
+      --key-file=/etc/kubernetes/pki/etcd/server.key
+      --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+      --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+      --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      /etc/kubernetes/pki/etcd from etcd-certs (rw)
+    Path:          /etc/kubernetes/pki/etcd
+
+student-node ~ ➜  ssh cluster1-controlplane
+Welcome to Ubuntu 18.04.6 LTS (GNU/Linux 5.4.0-1106-gcp x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+This system has been minimized by removing packages and content that are
+not required on a system that users do not log into.
+
+To restore this content, you can run the 'unminimize' command.
+
+cluster1-controlplane ~ ✖ ETCDCTL_API=3 etcdctl --endpoints=https://192.5.35.22:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key snapshot save /opt/cluster1.db
+Snapshot saved at /opt/cluster1.db
+
+cluster1-controlplane ~ ➜  exit
+logout
+Connection to cluster1-controlplane closed.
+
+student-node ~ ➜  scp cluster1-controlplane:/opt/cluster1.db /opt
+cluster1.db                                                                        100% 2060KB 144.9MB/s   00:00
+
+student-node ~ ➜
+```
+
+### An ETCD backup for cluster2 is stored at /opt/cluster2.db. Use this snapshot file to carryout a restore on cluster2 to a new path /var/lib/etcd-data-new.
+
+Step 1. Copy the snapshot file from the student-node to the etcd-server. In the example below, we are copying it to the /root directory:
+
+```bash
+student-node ~ ➜  kubectl config use-context cluster2
+Switched to context "cluster2".
+
+student-node ~ ➜  scp /opt/cluster2.db etcd-server:/root
+cluster2.db                                                                        100% 2052KB 168.0MB/s   00:00
+
+student-node ~ ➜
+```
+
+Step 2: Restore the snapshot on the `cluster2`. Since we are restoring directly on the `etcd-server`, we can use the endpoint `https:/127.0.0.1`. Use the same certificates that were identified earlier. Make sure to use the `data-dir` as `/var/lib/etcd-data-new`:
+
+```bash
+etcd-server ~ ➜  ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/etcd/pki/ca.pem --cert=/etc/etcd/pki/etcd.pem --key=/etc/etcd/pki/etcd-key.pem snapshot restore /root/cluster2.db --data-dir /var/lib/etcd-data-new
+{"level":"info","ts":1713591986.451862,"caller":"snapshot/v3_snapshot.go:296","msg":"restoring snapshot","path":"/root/cluster2.db","wal-dir":"/var/lib/etcd-data-new/member/wal","data-dir":"/var/lib/etcd-data-new","snap-dir":"/var/lib/etcd-data-new/member/snap"}
+{"level":"info","ts":1713591986.469451,"caller":"mvcc/kvstore.go:388","msg":"restored last compact revision","meta-bucket-name":"meta","meta-bucket-name-key":"finishedCompactRev","restored-compact-revision":9495}
+{"level":"info","ts":1713591986.4752784,"caller":"membership/cluster.go:392","msg":"added member","cluster-id":"cdf818194e3a8c32","local-member-id":"0","added-peer-id":"8e9e05c52164694d","added-peer-peer-urls":["http://localhost:2380"]}
+{"level":"info","ts":1713591986.529377,"caller":"snapshot/v3_snapshot.go:309","msg":"restored snapshot","path":"/root/cluster2.db","wal-dir":"/var/lib/etcd-data-new/member/wal","data-dir":"/var/lib/etcd-data-new","snap-dir":"/var/lib/etcd-data-new/member/snap"}
+
+etcd-server ~ ➜
+```
+
+Step 3: Update the systemd service unit file for `etcd` by running `vi /etc/systemd/system/etcd.service` and add the new value for `data-dir`:
+
+```bash
+etcd-server ~ ➜  vi /etc/systemd/system/etcd.service
+
+etcd-server ~ ➜
+```
+
+```yaml
+[Unit]
+Description=etcd key-value store
+Documentation=https://github.com/etcd-io/etcd
+After=network.target
+
+[Service]
+User=etcd
+Type=notify
+ExecStart=/usr/local/bin/etcd \
+  --name etcd-server \
+  --data-dir=/var/lib/etcd-data-new \
+---End of Snippet---
+```
+
+Step 4: make sure the permissions on the new directory is correct (should be owned by etcd user):
+
+```bash
+etcd-server ~ ➜  chown -R etcd:etcd /var/lib/etcd-data-new
+
+etcd-server ~ ➜  ls -ld /var/lib/etcd-data-new/
+drwx------ 3 etcd etcd 4096 Apr 20 05:46 /var/lib/etcd-data-new/
+
+etcd-server ~ ➜
+```
+
+Step 5: Finally, reload and restart the etcd service.
+
+```bash
+etcd-server ~ ➜  systemctl daemon-reload
+
+etcd-server ~ ➜   systemctl restart etcd
+
+etcd-server ~ ➜
+```
+
+Step 6 (optional): It is recommended to restart controlplane components (e.g. kube-scheduler, kube-controller-manager, kubelet) to ensure that they don't rely on some stale data.
