@@ -2306,3 +2306,200 @@ controlplane ~ ➜
 This indicates an issue with the ETCD CA certificate used by the `kube-apiserver`. Correct it to use the file `/etc/kubernetes/pki/etcd/ca.crt`.
 
 Once the YAML file has been saved, wait for the `kube-apiserver` pod to be Ready. This can take a couple of minutes.
+
+---
+
+## Security - Practice Test - Certificates API
+
+### Inspect a Certificate Signing Request(CSR)
+
+A new member `akshay` joined our team. He requires access to our cluster. The Certificate Signing Request is at the `/root` location.
+
+```bash
+controlplane ~ ➜  ls
+akshay.csr  akshay.key
+
+controlplane ~ ✖ cat akshay.csr
+-----BEGIN CERTIFICATE REQUEST-----
+MIICVjCCAT4CAQAwETEPMA0GA1UEAwwGYWtzaGF5MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAzbGDtwIwULAtsBHz+jj4xgN6rK+rzIiB+blB7y1oNadJ
+IfF4Dq+i8y+QY4ID4ewnjO8XemDqZejICG3CVxxxBo89AcUC7xE0+WU3EaJIp/5N
+wLim6wm8vJ9VFTSexLh2RHY/FqqJHVTgYTGiQvr+L/VJ11bgZC6kLfEAAUbgizTH
+CWS89J/zoMQJ0MkU4DuwMwfXseliHb3gPZCLUjeV95JZt22g+Hzrc2sKDDrQ+DEO
+/k4VeR2Rt4rE8Xnh2NPXF+k5iPdNipRyWgfWpQzJal+R7swJfJSlFvrTpAdYWpiw
+V3+4VwOzm1i5KfULKUvU6suIQZS2UUYSQ+jqvJtUZQIDAQABoAAwDQYJKoZIhvcN
+AQELBQADggEBAA/NAbtsiU+BiEf15wozUqGxiC/GwdpKQlrScRiCQcwPch9k5C0P
+6JrSHHnyd8yZuR+c2Tu7+k2OJm0BIDtr5Fvkb58cdypvq23QWLSgg2QQpg0d2a/Y
+usnzzofQAwCCiXdOPJsQIbEhxcwwAsxqJWpqPFg6HOOlLlsy4k+aYRVJWqnJYTeH
+iLQLXcAoTCivI1hAeeDz4PsJOHAKc9eYNPFPNimhO2JjHW5OA3I6Cggpy2je9mwW
+Bm2FwTwTv5Rn2krYaORzH/vNKMtjIVo2Oxs81CGQiZsln3dEwdsH9dWGNyXFLDU8
+WOPohNY5vvuagjolxIVdv7ZvAdR4T4IZ5ZQ=
+-----END CERTIFICATE REQUEST-----
+
+controlplane ~ ➜
+```
+
+### Create a CertificateSigningRequest object
+
+Create a CertificateSigningRequest object with the name `akshay` with the contents of the `akshay.csr` file.
+
+As of kubernetes 1.19, the API to use for CSR is `certificates.k8s.io/v1`.
+
+Please note that an additional field called `signerName` should also be added when creating CSR. For client authentication to the API server we will use the built-in signer `kubernetes.io/kube-apiserver-client`.
+
+Use this command to generate the base64 encoded format as following:
+
+```bash
+cat akshay.csr | base64 -w 0 # not to insert any line breaks in the output.
+```
+
+Finally, save the below YAML in a file and create a CSR name `akshay` as follows:
+
+```yaml
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: akshay
+spec:
+  groups:
+    - system:authenticated
+  request: <Paste the base64 encoded value of the CSR file>
+  signerName: kubernetes.io/kube-apiserver-client
+  usages:
+    - client auth
+```
+
+&
+
+```bash
+controlplane ~ ➜  kubectl apply -f akshay-csr.yaml
+certificatesigningrequest.certificates.k8s.io/akshay created
+
+controlplane ~ ➜
+```
+
+### What is the Condition of the newly created Certificate Signing Request object?
+
+```bash
+controlplane ~ ➜  kubectl get csr
+NAME        AGE   SIGNERNAME                                    REQUESTOR                  REQUESTEDDURATION   CONDITION
+akshay      97s   kubernetes.io/kube-apiserver-client           kubernetes-admin           <none>              Pending # here
+csr-zj4bp   13m   kubernetes.io/kube-apiserver-client-kubelet   system:node:controlplane   <none>              Approved,Issued
+
+controlplane ~ ➜
+```
+
+### Approve the CSR Request
+
+```bash
+controlplane ~ ➜  kubectl certificate approve akshay
+certificatesigningrequest.certificates.k8s.io/akshay approved
+
+controlplane ~ ➜  kubectl get csr
+NAME        AGE     SIGNERNAME                                    REQUESTOR                  REQUESTEDDURATION   CONDITION
+akshay      5m33s   kubernetes.io/kube-apiserver-client           kubernetes-admin           <none>              Approved,Issued # here
+csr-zj4bp   17m     kubernetes.io/kube-apiserver-client-kubelet   system:node:controlplane   <none>              Approved,Issued
+
+controlplane ~ ➜
+```
+
+### Check the details about a CSR request. Preferebly in YAML.
+
+```bash
+kubectl get csr agent-smith -o yaml
+```
+
+### Reject a CSR request.
+
+```bash
+controlplane ~ ✖ kubectl certificate deny agent-smith
+certificatesigningrequest.certificates.k8s.io/agent-smith denied
+
+controlplane ~ ➜
+```
+
+### Delete a CSR request.
+
+```bash
+controlplane ~ ➜  kubectl delete csr agent-smith
+certificatesigningrequest.certificates.k8s.io "agent-smith" deleted
+
+controlplane ~ ➜
+```
+
+---
+
+## Security - Practice Test - KubeConfig
+
+### Identify the location of the default kubeconfig file (in current environment)
+
+Find the current home directory by looking at the HOME environment variable.
+
+```bash
+controlplane ~ ➜  ls -a
+.  ..  .bash_profile  .bashrc  .cache  CKA  .config  .kube  my-kube-config  .profile  sample.yaml  .ssh  .vim  .vimrc  .wget-hsts
+
+controlplane ~ ➜  cd .kube
+
+controlplane ~/.kube ➜  ls
+cache  config # /root/.kube/config
+```
+
+### Get the number of clusters defined in the default kubeconfig file
+
+```bash
+controlplane ~/.kube ➜  kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://controlplane:6443
+  name: kubernetes # just one cluster
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes # just one context
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin # just one user
+  user:
+    client-certificate-data: DATA+OMITTED
+    client-key-data: DATA+OMITTED
+
+controlplane ~/.kube ➜
+```
+
+### Inspect a kubeconfig file `my-kube-config`
+
+```bash
+kubectl config view --kubeconfig my-kube-config
+```
+
+### Use context (not the default one)
+
+I would like to use the `dev-user` to access `test-cluster-1`. Set the current context to the right one so I can do that.
+
+```bash
+controlplane ~ ➜  kubectl config --kubeconfig=/root/my-kube-config use-context research
+Switched to context "research".
+
+controlplane ~ ➜  kubectl config --kubeconfig=/root/my-kube-config current-context
+research
+
+controlplane ~ ➜
+```
+
+### Change the default kubeconfig
+
+We don't want to have to specify the kubeconfig file option on each command.
+
+Set the `my-kube-config` file as the default kubeconfig by overwriting the content of `~/.kube/config` with the content of the `my-kube-config` file.
+
+```bash
+cp my-kube-config ~/.kube/config # just a simple `cp <source> <destination>` command
+```
+
+---
