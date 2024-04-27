@@ -2503,3 +2503,160 @@ cp my-kube-config ~/.kube/config # just a simple `cp <source> <destination>` com
 ```
 
 ---
+
+## Security - Practice Test - Role Based Access Controls
+
+### Identify the authorization modes configured on the cluster.
+
+```bash
+controlplane ~ ✖ kubectl describe pod kube-apiserver-controlplane -n kube-system | grep authorization-mode
+      --authorization-mode=Node,RBAC
+
+controlplane ~ ➜
+```
+
+### How many roles exist in the `default` namespace?
+
+```bash
+kubectl get roles
+```
+
+### How many roles exist in all namespaces together?
+
+```bash
+kubectl get roles --all-namespaces
+```
+
+or
+
+```bash
+kubectl get roles -A
+```
+
+```bash
+controlplane ~ ✖ kubectl get roles -A
+NAMESPACE     NAME                                             CREATED AT
+blue          developer                                        2024-04-27T00:24:56Z
+kube-public   kubeadm:bootstrap-signer-clusterinfo             2024-04-27T00:11:38Z
+kube-public   system:controller:bootstrap-signer               2024-04-27T00:11:36Z
+kube-system   extension-apiserver-authentication-reader        2024-04-27T00:11:36Z
+kube-system   kube-proxy                                       2024-04-27T00:11:38Z
+kube-system   kubeadm:kubelet-config                           2024-04-27T00:11:36Z
+kube-system   kubeadm:nodes-kubeadm-config                     2024-04-27T00:11:36Z
+kube-system   system::leader-locking-kube-controller-manager   2024-04-27T00:11:36Z
+kube-system   system::leader-locking-kube-scheduler            2024-04-27T00:11:36Z
+kube-system   system:controller:bootstrap-signer               2024-04-27T00:11:36Z
+kube-system   system:controller:cloud-provider                 2024-04-27T00:11:36Z
+kube-system   system:controller:token-cleaner                  2024-04-27T00:11:36Z
+
+controlplane ~ ➜  kubectl get roles -A | wc -l
+13
+
+controlplane ~ ✖ kubectl get roles -A --no-headers | wc -l
+12
+```
+
+### What are the resources the `kube-proxy` role in the `kube-system` namespace is given access to?
+
+```bash
+controlplane ~ ➜  kubectl describe role kube-proxy -n kube-system
+Name:         kube-proxy
+Labels:       <none>
+Annotations:  <none>
+PolicyRule:
+  Resources   Non-Resource URLs  Resource Names  Verbs
+  ---------   -----------------  --------------  -----
+  configmaps  []                 [kube-proxy]    [get]  # meaning `kube-proxy` role can perform `get` action for `configmaps` resource
+
+controlplane ~ ➜
+```
+
+### Which account is the `kube-proxy` role assigned to?
+
+```bash
+controlplane ~ ➜  kubectl describe rolebinding kube-proxy -n kube-system
+Name:         kube-proxy
+Labels:       <none>
+Annotations:  <none>
+Role:
+  Kind:  Role
+  Name:  kube-proxy
+Subjects:
+  Kind   Name                                             Namespace
+  ----   ----                                             ---------
+  Group  system:bootstrappers:kubeadm:default-node-token
+
+controlplane ~ ➜
+
+```
+
+### Check if the user can list pods in the default namespace.
+
+A user `dev-user` is created. User's details have been added to the `kubeconfig` file. Inspect the permissions granted to the user.
+
+```bash
+controlplane ~ ➜  kubectl get pod --as dev-user
+Error from server (Forbidden): pods is forbidden: User "dev-user" cannot list resource "pods" in API group "" in the namespace "default"
+
+controlplane ~ ✖
+```
+
+### Create the necessary roles and role bindings required for the `dev-user` to create, list and delete pods in the `default` namespace.
+
+1. Imperative
+
+To create a Role:
+
+```bash
+kubectl create role developer --namespace=default --verb=list,create,delete --resource=pods
+```
+
+To create a RoleBinding:
+
+```bash
+kubectl create rolebinding dev-user-binding --namespace=default --role=developer --user=dev-user
+```
+
+```bash
+controlplane ~ ✖ kubectl create role developer --namespace=default --verb=list,create,delete --resource=pods
+role.rbac.authorization.k8s.io/devloper created
+
+controlplane ~ ➜  kubectl create rolebinding dev-user-binding --namespace=default --role=developer --user=dev-user
+rolebinding.rbac.authorization.k8s.io/dev-user-binding created
+
+controlplane ~ ✖ kubectl get pod --as dev-user
+NAME                   READY   STATUS    RESTARTS   AGE
+red-5bd8fd8c7f-rpl47   1/1     Running   0          53m
+red-5bd8fd8c7f-sn4jl   1/1     Running   0          53m
+
+controlplane ~ ➜
+
+```
+
+2. Declarative
+
+```yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: default
+  name: developer
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "create", "delete"]
+
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dev-user-binding
+subjects:
+  - kind: User
+    name: dev-user
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+```
