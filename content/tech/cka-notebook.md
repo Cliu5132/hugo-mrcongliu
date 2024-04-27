@@ -2660,3 +2660,165 @@ roleRef:
   name: developer
   apiGroup: rbac.authorization.k8s.io
 ```
+
+---
+
+## Security - Practice Test - Cluster Roles
+
+### How many `ClusterRoles` do you see defined in the cluster?
+
+```bash
+controlplane ~ ➜  kubectl get clusterroles --no-headers  | wc -l
+71
+
+controlplane ~ ➜  kubectl get clusterroles --no-headers  -o json | jq '.items | length'
+71
+```
+
+### How many `ClusterRoleBindings` exist on the cluster?
+
+```bash
+controlplane ~ ➜  kubectl get clusterrolebinding --no-headers  | wc -l
+56
+
+controlplane ~ ➜  kubectl get clusterrolebindings --no-headers  -o json | jq '.items | length'
+56
+
+controlplane ~ ➜
+```
+
+### What namespace is the `cluster-admin` clusterrole part of?
+
+ClusterRole is a non-namespaced resource. You can check via the `kubectl api-resources --namespaced=false` command. So the correct answer would be `Cluster Roles are cluster wide and not part of any namespace`.
+
+```bash
+controlplane ~ ➜  kubectl api-resources --namespaced=false
+NAME                              SHORTNAMES   APIVERSION                        NAMESPACED   KIND
+componentstatuses                 cs           v1                                false        ComponentStatus
+namespaces                        ns           v1                                false        Namespace
+nodes                             no           v1                                false        Node
+persistentvolumes                 pv           v1                                false        PersistentVolume
+mutatingwebhookconfigurations                  admissionregistration.k8s.io/v1   false        MutatingWebhookConfiguration
+validatingwebhookconfigurations                admissionregistration.k8s.io/v1   false        ValidatingWebhookConfiguration
+customresourcedefinitions         crd,crds     apiextensions.k8s.io/v1           false        CustomResourceDefinition
+apiservices                                    apiregistration.k8s.io/v1         false        APIService
+selfsubjectreviews                             authentication.k8s.io/v1          false        SelfSubjectReview
+tokenreviews                                   authentication.k8s.io/v1          false        TokenReview
+selfsubjectaccessreviews                       authorization.k8s.io/v1           false        SelfSubjectAccessReview
+selfsubjectrulesreviews                        authorization.k8s.io/v1           false        SelfSubjectRulesReview
+subjectaccessreviews                           authorization.k8s.io/v1           false        SubjectAccessReview
+certificatesigningrequests        csr          certificates.k8s.io/v1            false        CertificateSigningRequest
+flowschemas                                    flowcontrol.apiserver.k8s.io/v1   false        FlowSchema
+prioritylevelconfigurations                    flowcontrol.apiserver.k8s.io/v1   false        PriorityLevelConfiguration
+etcdsnapshotfiles                              k3s.cattle.io/v1                  false        ETCDSnapshotFile
+nodes                                          metrics.k8s.io/v1beta1            false        NodeMetrics
+ingressclasses                                 networking.k8s.io/v1              false        IngressClass
+runtimeclasses                                 node.k8s.io/v1                    false        RuntimeClass
+clusterrolebindings                            rbac.authorization.k8s.io/v1      false        ClusterRoleBinding
+clusterroles                                   rbac.authorization.k8s.io/v1      false        ClusterRole # here
+priorityclasses                   pc           scheduling.k8s.io/v1              false        PriorityClass
+csidrivers                                     storage.k8s.io/v1                 false        CSIDriver
+csinodes                                       storage.k8s.io/v1                 false        CSINode
+storageclasses                    sc           storage.k8s.io/v1                 false        StorageClass
+volumeattachments                              storage.k8s.io/v1                 false        VolumeAttachment
+
+controlplane ~ ➜
+```
+
+### What user/groups are the `cluster-admin` role bound to?
+
+```bash
+controlplane ~ ➜  k describe clusterrolebinding cluster-admin
+Name:         cluster-admin
+Labels:       kubernetes.io/bootstrapping=rbac-defaults
+Annotations:  rbac.authorization.kubernetes.io/autoupdate: true
+Role:
+  Kind:  ClusterRole
+  Name:  cluster-admin
+Subjects:
+  Kind   Name            Namespace
+  ----   ----            ---------
+  Group  system:masters # here
+
+controlplane ~ ➜
+```
+
+### Inspect the `cluster-admin` role's privileges.
+
+```bash
+controlplane ~ ➜  k describe clusterrole cluster-admin
+Name:         cluster-admin
+Labels:       kubernetes.io/bootstrapping=rbac-defaults
+Annotations:  rbac.authorization.kubernetes.io/autoupdate: true
+PolicyRule:
+  Resources  Non-Resource URLs  Resource Names  Verbs
+  ---------  -----------------  --------------  -----
+  *.*        []                 []              [*]
+             [*]                []              [*]
+
+controlplane ~ ➜
+```
+
+### Grant permission to access nodes
+
+A new user `michelle` joined the team. She will be focusing on the `nodes` in the cluster. Create the required `ClusterRoles` and `ClusterRoleBindings` so she gets access to the `nodes`.
+
+```yaml
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: node-admin
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "watch", "list", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: michelle-binding
+subjects:
+  - kind: User
+    name: michelle
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: node-admin
+  apiGroup: rbac.authorization.k8s.io
+```
+
+```bash
+kubectl auth can-i list nodes --as michelle.
+```
+
+### `michelle`'s responsibilities are growing and now she will be responsible for storage as well. Create the required `ClusterRoles` and `ClusterRoleBindings` to allow her access to Storage.
+
+```bash
+controlplane ~ ➜  kubectl auth can-i list storageclasses --as michelle
+Warning: resource 'storageclasses' is not namespace scoped in group 'storage.k8s.io'
+
+no
+
+controlplane ~ ✖ kubectl create clusterrole storage-admin --resource=persistentvolumes,storageclasses --verb=* --dry-run=client -o yaml > storage-admin-clusterrole.yaml
+
+controlplane ~ ➜  vi storage-admin-clusterrole.yaml
+
+controlplane ~ ➜  kubectl create clusterrolebinding michelle-storage-admin --user=michelle --clusterrole=storage-admin --dry-run=client -o yaml > storage-admin-rolebinding.yaml
+
+controlplane ~ ➜  vi storage-admin-rolebinding.yaml
+
+controlplane ~ ➜  kubectl create -f storage-admin-clusterrole.yaml
+clusterrole.rbac.authorization.k8s.io/storage-admin created
+
+controlplane ~ ➜  kubectl create -f storage-admin-rolebinding.yaml
+clusterrolebinding.rbac.authorization.k8s.io/michelle-storage-admin created
+
+controlplane ~ ➜  kubectl auth can-i list storageclasses --as michelle
+Warning: resource 'storageclasses' is not namespace scoped in group 'storage.k8s.io'
+
+yes
+
+controlplane ~ ➜
+```
