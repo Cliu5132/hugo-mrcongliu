@@ -2822,3 +2822,31 @@ yes
 
 controlplane ~ ➜
 ```
+
+---
+
+## Security - Practice Test - Service Accounts
+
+### How many Service Accounts exist in the default namespace?
+
+```bash
+kubectl get serviceaccounts
+```
+
+### What is the secret token used by the default service account?
+
+```bash
+kubectl describe serviceaccount default # look for `Tokens` field
+```
+
+### Create a new Service Account `dashboard-sa`
+
+```bash
+kubectl create serviceaccount dashboard-sa
+```
+
+### Create a token for the Service Account `dashboard-sa`
+
+```bash
+kubectl create token dashboard-sa
+```
