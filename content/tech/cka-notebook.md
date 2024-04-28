@@ -2850,3 +2850,78 @@ kubectl create serviceaccount dashboard-sa
 ```bash
 kubectl create token dashboard-sa
 ```
+
+---
+
+## Security - Practice Test - Image Security
+
+### What secret type must be chosen for `docker registry`?
+
+```bash
+kubectl create secret --help # answer is `docker-registry`
+```
+
+### Create a secret object with the credentials required to access to a private registry.
+
+- Name: `private-reg-cred`
+- Username: `dock_user`
+- Password: `dock_password`
+- Server: `myprivateregistry.com:5000`
+- Email: `dock_user@privateregistry.com`
+
+```bash
+kubectl create secret docker-registry private-reg-cred --docker-username=dock_user --docker-password=dock_password --docker-server=myprivateregistry.com:5000 --docker-email=dock_user@myprivateregistry.com
+```
+
+---
+
+## Security - Practice Test - Security Contexts
+
+### Check which user is used to execute commands inside the `ubuntu-sleeper` pod?
+
+```bash
+kubectl exec ubuntu-sleeper -- whoami
+```
+
+### Change Security Conext of this pod to use User ID 1010
+
+```yaml
+# In pod yaml, add under spec
+spec:
+  securityContext:
+    runAsUser: 1010
+```
+
+### Inheritance of Security Context in multi-container pod
+
+```yaml
+apiVersion: v1
+kind: pod
+metadata:
+  name: multi-pod
+spec:
+  securityContext:
+    runAsUser: 1001
+  containers:
+    - image: ubuntu # this container uses user 1002
+      name: web
+      command: ["sleep", "5000"]
+      securityContext:
+        runAsUser: 1002
+
+    - image: ubuntu # this container uses user 1001, as inherited from top-level's user.
+      name: sidecar
+      command: ["sleep", "5000"]
+```
+
+### Add Capabilities to a pod via Security Context
+
+```yaml
+spec:
+  containers:
+    - image: ubuntu
+      name: ubuntu-sleeper
+      securityContext:
+        capabilities:
+          add: ["SYS_TIME"]
+```
