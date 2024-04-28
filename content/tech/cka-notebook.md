@@ -2925,3 +2925,24 @@ spec:
         capabilities:
           add: ["SYS_TIME"]
 ```
+
+---
+
+## Security - Practice Test - Network Policies
+
+### Get all Network Policies
+
+```bash
+kubectl get networkpolicy
+
+# or
+kubectl get netpol
+```
+
+### Get details of a Network Policy
+
+```bash
+kubectl describe networkpolicy
+```
+
+### Create Ingress and Egress
