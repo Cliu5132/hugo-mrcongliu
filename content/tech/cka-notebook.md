@@ -2946,3 +2946,205 @@ kubectl describe networkpolicy
 ```
 
 ### Create Ingress and Egress
+
+![](https://hugo-mrcongliu.s3.ca-central-1.amazonaws.com/efc9bc9e-e9ea-25dc-f3cc-0bb6258ce367.png)
+
+Create a network policy to allow traffic from the `Internal` application only to the `payroll-service` and `db-service`.
+Use the spec given below. You might want to enable ingress traffic to the pod.
+Also, ensure that you allow egress traffic to DNS ports TCP and UDP (port 53) to enable DNS resolution from the internal pod.
+
+- Policy Name: internal-policy
+- Policy Type: Egress
+- Egress Allow: payroll
+- Payroll Port: 8080
+- Egress Allow: mysql
+- MySQL Port: 3306
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      name: internal
+  policyTypes:
+    - Egress
+    - Ingress
+  ingress:
+    - {}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              name: mysql
+      ports:
+        - protocol: TCP
+          port: 3306
+
+    - to:
+        - podSelector:
+            matchLabels:
+              name: payroll
+      ports:
+        - protocol: TCP
+          port: 8080
+
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+```
+
+{{< notice note >}}
+We have also allowed `Egress` traffic to `TCP` and `UDP` port. This has been added to ensure that the internal DNS resolution works from the `internal` pod.
+{{< /notice >}}
+
+The `kube-dns` service is exposed on port `53`:
+
+```bash
+root@controlplane:~> kubectl get svc -n kube-system
+NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
+kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   18m
+
+root@controlplane:~>
+```
+
+---
+
+## Storage - Practice Test - Persistent Volume Claims
+
+### Exec into container
+
+Currently, there is a pod `webapp`. We can see its log using:
+
+```bash
+# kubectl exec <podName> -- <command to execute inside container>
+kubectl exec webapp -- cat /log/app.log
+```
+
+However, the logs will disapear if the pod is deleted.
+
+### Configure a volume to store these logs at `/var/log/webapp` on the host.
+
+- Name: webapp
+- Image Name: kodekloud/event-simulator
+- Volume HostPath: /var/log/webapp
+- Volume Mount: /log
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+spec:
+  containers:
+    - name: event-simulator
+      image: kodekloud/event-simulator
+      env:
+        - name: LOG_HANDLERS
+          value: file
+      volumeMounts:
+        - mountPath: /log # container file location
+          name: log-volume
+
+volumes:
+  - name: log-volume
+    hostPath:
+      path: /var/log/webapp # host file location
+      type: Directory # optional
+```
+
+### Create a `Persistent Volume` with the given specification
+
+- Volume Name: pv-log
+- Storage: 100Mi
+- Access Modes: ReadWriteMany
+- Host Path: /pv/log
+- Reclaim Policy: Retain
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-log
+spec:
+  persistentVolumeReclaimPolicy: Retain
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 100Mi
+  hostPath:
+    path: /pv/log
+```
+
+### Create a `Persistent Volume Claim` with the given specification
+
+- Volume Name: claim-log-1
+- Storage Request: 50Mi
+- Access Modes: ReadWriteOnce
+
+```yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: claim-log-1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi
+```
+
+### Get all `Persistent Volume` and `Persistent Volume Claim`
+
+```bash
+kubectl get pvc
+
+kubectl get pv
+```
+
+### Why is the claim not bound to the available PV?
+
+Access Mode Mismatch
+
+### Update webapp pod to use this pv
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+spec:
+  containers:
+    - name: event-simulator
+      image: kodekloud/event-simulator
+      env:
+        - name: LOG_HANDLERS
+          value: file
+      volumeMounts:
+        - mountPath: /log # container file location
+          name: log-volume
+
+volumes:
+  - name: log-volume
+    # hostPath:
+    #   path: /var/log/webapp # host file location
+    #   type: Directory # optional
+    persistentVolumeClaim:
+      claimName: claim-log-1
+```
+
+### Relationship between PersistentVolume (PV), PersistentVolumeClaim (PVC), and Pod
+
+- If a PVC is being used by a Pod, you typically can't delete the PVC without first deleting the Pod. This is because the Pod is bound to the PVC, and deleting the PVC would disrupt the Pod's ability to access its required storage.
+
+- If the Pod using a PVC is deleted, the PVC will be in a "Pending" state. This means the PVC is not bound to any Pod, and it's available for use by other Pods.
+
+- If the PVC is deleted, the associated PV (if there is one) will be released. This means the storage resources associated with the PV will become available for use by other PVCs.
+
+---
