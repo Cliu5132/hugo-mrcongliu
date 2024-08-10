@@ -1,7 +1,7 @@
 ---
 title: "End of an Era"
 date: 2024-05-16
-draft: true
+draft: false
 ---
 
 Imagine a scene where your boss, HR, and manager walk into your office in the morning. You probably wouldn’t see it coming. You were enjoying the comfort of your full-time job with excellent health insurance, coming in at 9, leaving at 5, five days a week...
