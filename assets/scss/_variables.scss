@@ -1,21 +1,12 @@
-// @font-face {
-//     font-family: "CustomChineseFont";
-//     src: url('/fonts/微软雅黑粗体.ttf') format('truetype');
-//     font-weight: normal;
-//     font-style: normal;
-// }
+@font-face {
+    font-family: "华文行楷";
+    src: url('/fonts/华文行楷.ttf') format('truetype');
+}
 
 // Fonts
-$font-family: "华文行楷",
--apple-system,
-BlinkMacSystemFont,
-"Segoe UI",
-Roboto,
-Oxygen-Sans,
+$font-family: -apple-system,
 Ubuntu,
-Cantarell,
-"Helvetica Neue",
-Helvetica,
+"华文行楷",
 sans-serif;
 $code-font-family: SFMono-Regular,
 Consolas,
