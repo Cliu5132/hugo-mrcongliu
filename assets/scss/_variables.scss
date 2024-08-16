@@ -1,7 +1,7 @@
-@font-face {
-    font-family: "华文楷体";
-    src: url('/fonts/华文楷体.ttf') format('truetype');
-}
+// @font-face {
+//     font-family: "华文楷体";
+//     src: url('/fonts/华文楷体.ttf') format('truetype');
+// }
 
 // Fonts
 $font-family: -apple-system,
@@ -13,7 +13,8 @@ Ubuntu,
 Cantarell,
 "Helvetica Neue",
 Helvetica,
-"华文楷体",
+SimSun,"宋体",
+Heiti,"黑体",
 sans-serif;
 $code-font-family: SFMono-Regular,
 Consolas,
