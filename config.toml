@@ -16,7 +16,7 @@ author = "Cong Liu"
 # license = '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA-4.0</a>'
 description = "Cong Liu's personal website"
 keywords = "blog,tech,life"
-info = ["Full Stack Developer"]
+info = ["DevOps Engineer"]
 avatarURL = "images/avatar.jpg"
 #gravatar = "john.doe@example.com"
 dateFormat = "January 2, 2006"
@@ -157,7 +157,7 @@ url = "tech/"
 
 [languages.cn.params]
 author = "刘聪"
-info = "全干工程师"
+info = "运维工程师"
 
 [[languages.cn.menu.main]]
 name = "文字"
