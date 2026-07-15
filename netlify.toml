@@ -3,4 +3,4 @@
   publish = "public"
 
 [build.environment]
-  HUGO_VERSION = "0.134.3" # Replace with your preferred Hugo version
+  HUGO_VERSION = "0.119.0"
